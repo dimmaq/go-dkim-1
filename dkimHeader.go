@@ -218,6 +218,18 @@ func newDkimHeaderBySigOptions(options SigOptions) *dkimHeader {
 	return h
 }
 
+func parseMailFrom(f string) string {
+	s := strings.IndexByte(f, '<')
+	if s >= 0 {
+		e := strings.IndexByte(f[s:], '>')
+		if e >= 0 {
+			return strings.TrimSpace(f[s+1 : s+e])
+		}
+		return strings.TrimSpace(f[s+1:])
+	}
+	return strings.TrimSpace(f)
+}
+
 // NewFromEmail return a new DkimHeader by parsing an email
 // Note: according to RFC 6376 an email can have multiple DKIM Header
 // in this case we return the last inserted or the last with d== mail from
@@ -234,13 +246,9 @@ func newDkimHeaderFromEmail(email *[]byte) (*dkimHeader, error) {
 
 	// Get mail from domain
 	mailFromDomain := ""
-	mailfrom, err := mail.ParseAddress(m.Header.Get(textproto.CanonicalMIMEHeaderKey("From")))
-	if err != nil {
-		if err.Error() != "mail: no address" {
-			return nil, err
-		}
-	} else {
-		t := strings.SplitAfter(mailfrom.Address, "@")
+	mailfrom := parseMailFrom(m.Header.Get(textproto.CanonicalMIMEHeaderKey("From")))
+	if mailfrom != `` {
+		t := strings.SplitAfter(mailfrom, "@")
 		if len(t) > 1 {
 			mailFromDomain = strings.ToLower(t[1])
 		}
@@ -301,6 +309,10 @@ func parseDkHeader(header string) (dkh *dkimHeader, err error) {
 		return nil, ErrDkimHeaderBTagNotFound
 	}
 	dkh.RawForSign = header[0 : t+2]
+	p := strings.IndexByte(header[t:], ';')
+	if p != -1 {
+		dkh.RawForSign = dkh.RawForSign + header[t+p:]
+	}
 	// Mandatory
 	mandatoryFlags := make(map[string]bool, 7) //(b'v', b'a', b'b', b'bh', b'd', b'h', b's')
 	mandatoryFlags["v"] = false
@@ -321,6 +333,9 @@ func parseDkHeader(header string) (dkh *dkimHeader, err error) {
 
 	fs := strings.Split(val, ";")
 	for _, f := range fs {
+		if f == `` {
+			continue
+		}
 		flagData := strings.SplitN(f, "=", 2)
 		// https://github.com/toorop/go-dkim/issues/2
 		// if flag is not in the form key=value (eg doesn't have "=")

@@ -13,6 +13,8 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"hash"
+	"io/ioutil"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -260,6 +262,9 @@ func Verify(email *[]byte) (verifyOutput, error) {
 	}
 	toSignStr := string(headers) + dkimHeaderCano
 	toSign := bytes.TrimRight([]byte(toSignStr), " \r\n")
+	if debugSaveCanon {
+		ioutil.WriteFile(`header_canon2.txt`, toSign, os.ModeAppend)
+	}
 
 	err = verifySignature(toSign, dkimHeader.SignatureData, &pubKey.PubKey, sigHash[1])
 	if err != nil {

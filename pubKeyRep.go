@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"net"
 	"strings"
+	"unicode"
 )
 
 // pubKeyRep represents a parsed version of public key record
@@ -21,7 +22,7 @@ type pubKeyRep struct {
 }
 
 func newPubKeyFromDnsTxt(selector, domain string) (*pubKeyRep, verifyOutput, error) {
-	txt, err := net.LookupTXT(selector + "._domainkey." + domain)
+	raw, err := net.LookupTXT(selector + "._domainkey." + domain)
 	if err != nil {
 		if strings.HasSuffix(err.Error(), "no such host") {
 			return nil, PERMFAIL, ErrVerifyNoKeyForSignature
@@ -31,9 +32,10 @@ func newPubKeyFromDnsTxt(selector, domain string) (*pubKeyRep, verifyOutput, err
 	}
 
 	// empty record
-	if len(txt) == 0 {
+	if len(raw) == 0 {
 		return nil, PERMFAIL, ErrVerifyNoKeyForSignature
 	}
+	txt := strings.Join(raw, ``)
 
 	pkr := new(pubKeyRep)
 	pkr.Version = "DKIM1"
@@ -46,7 +48,7 @@ func newPubKeyFromDnsTxt(selector, domain string) (*pubKeyRep, verifyOutput, err
 	// parsing, we keep the first record
 	// TODO: if there is multiple record
 
-	p := strings.Split(txt[0], ";")
+	p := strings.Split(txt, ";")
 	for i, data := range p {
 		keyVal := strings.SplitN(data, "=", 2)
 		val := ""
@@ -83,7 +85,15 @@ func newPubKeyFromDnsTxt(selector, domain string) (*pubKeyRep, verifyOutput, err
 		case "n":
 			pkr.Note = val
 		case "p":
-			rawkey := val
+			//rawkey := val
+			// remove spaces
+			rawkey := strings.Map(func(r rune) rune {
+				if unicode.IsSpace(r) {
+					return -1
+				}
+				return r
+			}, val)
+
 			if rawkey == "" {
 				return nil, PERMFAIL, ErrVerifyRevokedKey
 			}
